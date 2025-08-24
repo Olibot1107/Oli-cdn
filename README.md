@@ -2,5 +2,5 @@
 
 Oli Mouse
 ```html
-<script src="https://raw.githubusercontent.com/Olibot1107/Oli-cdn/refs/heads/main/cdn/mouse.js"></script>
+<script src="https://olibot1107.github.io/Oli-cdn/main/cdn/mouse.js"></script>
 ```
