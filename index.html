@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Device ID Test Harness</title>
+  <style>
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;margin:20px;background:#f7fafc;color:#0f172a}
+    .card{background:white;border-radius:12px;padding:18px;margin-bottom:12px;box-shadow:0 6px 18px rgba(15,23,42,0.08)}
+    pre{background:#0b1220;color:#e6eef8;padding:12px;border-radius:8px;overflow:auto}
+    button{padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0;background:#111827;color:#fff;cursor:pointer}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    label{font-weight:600}
+    .small{font-size:13px;color:#475569}
+  </style>
+</head>
+<body>
+  <h1>Device ID Test Harness</h1>
+  <p class="small">This page will load the remote script <code>https://olibot1107.github.io/Oli-cdn/cdn/gid.js</code>, try to call any exported generator functions, and compare them to a local robust generator.</p>
+
+  <div class="card">
+    <label>Remote script status</label>
+    <div id="remoteStatus" class="small">Loading remote script...</div>
+    <div style="margin-top:8px" class="row">
+      <button id="generateBoth">Generate IDs (remote + local)</button>
+      <button id="generateLocal">Generate Local Only</button>
+      <button id="copyLocal">Copy Local ID</button>
+      <button id="copyRemote">Copy Remote ID</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Results</label>
+    <div style="margin-top:8px">
+      <div><strong>Local DeviceID:</strong></div>
+      <pre id="localResult">(not generated)</pre>
+      <div><strong>Remote GID:</strong></div>
+      <pre id="remoteResult">(not generated)</pre>
+      <div><strong>Comparison:</strong> <span id="comparison">-</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Fingerprint Components (debug)</label>
+    <pre id="components">(not generated)</pre>
+  </div>
+
+  <script>
+    // --- Local DeviceID implementation (same as the library you were shown) ---
+    const LocalDeviceID = (() => {
+      function getCanvasFingerprint() {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          ctx.textBaseline = 'top';
+          ctx.font = "14px 'Arial'";
+          ctx.fillStyle = "#f60";
+          ctx.fillRect(125, 1, 62, 20);
+          ctx.fillStyle = "#069";
+          ctx.fillText("DeviceFingerprintTest", 2, 15);
+          ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+          ctx.fillText("DeviceFingerprintTest", 4, 17);
+          return canvas.toDataURL();
+        } catch (e) { return '' }
+      }
+      function getWebGLFingerprint() {
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+          if (!gl) return '';
+          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+          const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : '';
+          const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : '';
+          return (vendor || '') + '|' + (renderer || '');
+        } catch (e) { return '' }
+      }
+      async function hashString(str) {
+        const msgUint8 = new TextEncoder().encode(str);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      async function generate() {
+        const navigatorInfo = [
+          navigator.userAgent || '',
+          navigator.language || '',
+          navigator.platform || '',
+          navigator.hardwareConcurrency || 0,
+          navigator.deviceMemory || 0
+        ].join('||');
+        const screenInfo = [screen.width || 0, screen.height || 0, screen.colorDepth || 0, screen.pixelDepth || 0].join('||');
+        const timezone = new Date().getTimezoneOffset();
+        const c = getCanvasFingerprint();
+        const w = getWebGLFingerprint();
+        const raw = [navigatorInfo, screenInfo, timezone, c, w].join('||');
+        return { id: await hashString(raw), raw, components: {navigatorInfo, screenInfo, timezone, canvas: c.slice(0,120), webgl: w} };
+      }
+      return { generate };
+    })();
+
+    // --- Load remote script dynamically ---
+    const remoteURL = 'https://olibot1107.github.io/Oli-cdn/cdn/gid.js';
+    let remoteLoaded = false;
+    let remoteObj = null;
+
+    function loadRemote(url){
+      return new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = url;
+        s.async = true;
+        s.onload = () => {
+          remoteLoaded = true;
+          document.getElementById('remoteStatus').textContent = 'Remote script loaded.';
+          // Try to find likely exported objects
+          remoteObj = window.GID || window.gid || window.Generator || window.OliGID || window.Oli || null;
+          if(!remoteObj) document.getElementById('remoteStatus').textContent += ' (no global export detected)';
+          resolve(true);
+        };
+        s.onerror = () => {
+          remoteLoaded = false;
+          document.getElementById('remoteStatus').textContent = 'Failed to load remote script (CORS/network).';
+          resolve(false);
+        };
+        document.head.appendChild(s);
+      });
+    }
+
+    // Attempt to load immediately
+    loadRemote(remoteURL);
+
+    // --- UI wiring ---
+    const localResult = document.getElementById('localResult');
+    const remoteResult = document.getElementById('remoteResult');
+    const components = document.getElementById('components');
+    const comparison = document.getElementById('comparison');
+
+    async function tryGenerateBoth(){
+      localResult.textContent = 'Generating...';
+      remoteResult.textContent = 'Generating...';
+      comparison.textContent = '-';
+      try {
+        const local = await LocalDeviceID.generate();
+        localResult.textContent = local.id;
+        components.textContent = JSON.stringify(local.components, null, 2);
+
+        // Remote: try several common function names
+        let remoteId = '(no remote generator detected)';
+        if(remoteLoaded && remoteObj){
+          try {
+            if(typeof remoteObj.generate === 'function'){
+              const r = await remoteObj.generate();
+              remoteId = (typeof r === 'string') ? r : (r && r.id) ? r.id : JSON.stringify(r);
+            } else if(typeof remoteObj.getId === 'function'){
+              const r = await remoteObj.getId();
+              remoteId = (typeof r === 'string') ? r : (r && r.id) ? r.id : JSON.stringify(r);
+            } else if(typeof window.generateGID === 'function'){
+              const r = await window.generateGID();
+              remoteId = r;
+            } else if(typeof remoteObj === 'function'){
+              const r = await remoteObj();
+              remoteId = r;
+            } else {
+              // Try to inspect common globals
+              const candidates = ['GID','gid','Oli','OliGID','Generator'];
+              for(const k of candidates){
+                if(window[k] && typeof window[k].generate === 'function'){
+                  const r = await window[k].generate();
+                  remoteId = (typeof r === 'string') ? r : (r && r.id) ? r.id : JSON.stringify(r);
+                  break;
+                }
+              }
+            }
+          } catch(err){
+            remoteId = '(remote generator threw error: ' + err.message + ')';
+          }
+        }
+        remoteResult.textContent = remoteId;
+        comparison.textContent = (remoteId === local.id) ? 'MATCH' : 'DIFFERENT';
+      } catch(e){
+        localResult.textContent = '(error: ' + e.message + ')';
+      }
+    }
+
+    document.getElementById('generateBoth').addEventListener('click', tryGenerateBoth);
+    document.getElementById('generateLocal').addEventListener('click', async ()=>{
+      document.getElementById('localResult').textContent = 'Generating...';
+      const local = await LocalDeviceID.generate();
+      document.getElementById('localResult').textContent = local.id;
+      document.getElementById('components').textContent = JSON.stringify(local.components, null, 2);
+    });
+
+    document.getElementById('copyLocal').addEventListener('click', ()=>{
+      const text = document.getElementById('localResult').textContent;
+      navigator.clipboard?.writeText(text).then(()=>alert('Local ID copied'))
+        .catch(()=>alert('Copy failed'));
+    });
+    document.getElementById('copyRemote').addEventListener('click', ()=>{
+      const text = document.getElementById('remoteResult').textContent;
+      navigator.clipboard?.writeText(text).then(()=>alert('Remote ID copied'))
+        .catch(()=>alert('Copy failed'));
+    });
+
+    // Auto-generate once loaded
+    window.addEventListener('load', ()=>{
+      setTimeout(()=>{
+        tryGenerateBoth();
+      }, 350);
+    });
+  </script>
+</body>
+</html>
