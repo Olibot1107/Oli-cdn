@@ -388,21 +388,6 @@ const DeviceID = (() => {
             }
         }
 
-        // media devices
-        if (cfg.mediaDevices) {
-            parts.push('mediaDevices:' + await safe(() => getMediaDeviceInfo(), ''));
-        }
-
-        // permissions
-        if (cfg.permissions) {
-            parts.push('permissions:' + await safe(() => getPermissionStates(), ''));
-        }
-
-        // battery (optional)
-        if (cfg.battery) {
-            parts.push('battery:' + await safe(() => getBatteryInfo(), ''));
-        }
-
         // finally, join deterministically and hash
         const raw = parts.join('||||');
         return await sha256Hex(raw);
