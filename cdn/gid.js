@@ -1,13 +1,5 @@
-// File: device-id.js
-
-/**
- * DeviceID Library
- * Generates a robust, device-specific ID that persists across private browsing
- * sessions on the same device, but differs across devices.
- */
 const DeviceID = (() => {
 
-    // Helper: Canvas fingerprint
     function getCanvasFingerprint() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -22,7 +14,6 @@ const DeviceID = (() => {
         return canvas.toDataURL();
     }
 
-    // Helper: WebGL fingerprint
     function getWebGLFingerprint() {
         try {
             const canvas = document.createElement('canvas');
@@ -37,7 +28,21 @@ const DeviceID = (() => {
         }
     }
 
-    // Helper: SHA-256 hash
+    function getAudioFingerprint() {
+        try {
+            const AudioContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            const context = new AudioContext(1, 44100, 44100);
+            const oscillator = context.createOscillator();
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(10000, context.currentTime);
+            oscillator.connect(context.destination);
+            oscillator.start(0);
+            return context.length.toString(); // deterministic per device
+        } catch (e) {
+            return '';
+        }
+    }
+
     async function hashString(str) {
         const msgUint8 = new TextEncoder().encode(str);
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
@@ -45,7 +50,6 @@ const DeviceID = (() => {
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // Main function to generate the device ID
     async function generate() {
         const navigatorInfo = [
             navigator.userAgent,
@@ -53,13 +57,15 @@ const DeviceID = (() => {
             navigator.platform,
             navigator.hardwareConcurrency || 1,
             navigator.deviceMemory || 1,
+            navigator.maxTouchPoints || 0
         ].join("||");
 
         const screenInfo = [
             screen.width,
             screen.height,
             screen.colorDepth,
-            screen.pixelDepth
+            screen.pixelDepth,
+            window.devicePixelRatio || 1
         ].join("||");
 
         const timezone = new Date().getTimezoneOffset();
@@ -69,7 +75,8 @@ const DeviceID = (() => {
             screenInfo,
             timezone,
             getCanvasFingerprint(),
-            getWebGLFingerprint()
+            getWebGLFingerprint(),
+            getAudioFingerprint()
         ].join("||");
 
         return await hashString(rawID);
@@ -77,10 +84,3 @@ const DeviceID = (() => {
 
     return { generate };
 })();
-
-// Export for ES modules
-if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
-    module.exports = DeviceID;
-} else {
-    window.DeviceID = DeviceID;
-}
