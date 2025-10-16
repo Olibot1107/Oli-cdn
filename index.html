@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ID Assignment</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      background-color: #111;
+      color: #fff;
+    }
+    .box {
+      text-align: center;
+      padding: 30px;
+      background: #222;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(255,255,255,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Assigning Your ID...</h1>
+    <p>Redirecting in 1 second</p>
+  </div>
+
+  <script>
+    // --- Cookie helpers ---
+    function setCookie(name, value, days = 300) {
+      const d = new Date();
+      d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+      document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/`;
+    }
+
+    function getCookie(name) {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+      return match ? match[2] : null;
+    }
+
+    // --- Generate ID ---
+    function generateID(length = 10) {
+      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let id = '';
+      for (let i = 0; i < length; i++) {
+        id += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return id;
+    }
+
+    // --- Get or create ID ---
+    let clientID = getCookie('clientID');
+    if (!clientID) {
+      clientID = generateID();
+      setCookie('clientID', clientID);
+    }
+
+    // --- Read ?url= from current page ---
+    const params = new URLSearchParams(window.location.search);
+    const targetUrl = params.get('url');
+
+    if (targetUrl) {
+      // Append ?id= to target URL
+      const parsed = new URL(targetUrl, window.location.origin);
+      parsed.searchParams.set('id', clientID);
+
+      // Wait 1 second before redirecting
+      setTimeout(() => {
+        window.location.href = parsed.toString();
+      }, 1000);
+    } else {
+      document.querySelector('.box').innerHTML = `
+        <h1>Error</h1>
+        <p>No <code>?url=</code> parameter provided.</p>
+      `;
+    }
+  </script>
+</body>
+</html>
