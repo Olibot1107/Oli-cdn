@@ -37,7 +37,6 @@
       transform: translateY(20px);
       opacity: 0;
       max-width: 600px;
-      word-wrap: break-word;
     }
 
     @keyframes fadeIn {
@@ -77,26 +76,12 @@
       margin-top: 15px;
       color: #0ff;
     }
-
-    .redirect-url {
-      margin-top: 15px;
-      font-family: monospace;
-      font-size: 0.9rem;
-      background: #111;
-      padding: 8px;
-      border-radius: 8px;
-      text-align: left;
-      box-shadow: 0 0 5px rgba(0,0,0,0.4);
-      overflow-wrap: break-word;
-    }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Assigning Your Unique ID...</h1>
-    <p>Preparing your session</p>
+    <h1>Assigning Your Unique ID</h1>a
     <div class="id-display" id="idDisplay">Generating...</div>
-    <div class="redirect-url" id="redirectUrl" style="display:none;"></div>
     <div class="countdown" id="countdown"></div>
   </div>
 
@@ -138,11 +123,6 @@
     if (targetUrl) {
       const parsed = new URL(targetUrl, window.location.origin);
       parsed.searchParams.set('id', clientID);
-
-      // Show final URL
-      const redirectUrlBox = document.getElementById('redirectUrl');
-      redirectUrlBox.style.display = 'block';
-      redirectUrlBox.textContent = parsed.toString();
 
       // Countdown
       let seconds = 3;
