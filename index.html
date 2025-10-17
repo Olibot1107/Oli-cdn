@@ -3,30 +3,101 @@
 <head>
   <meta charset="UTF-8" />
   <title>ID Assignment</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
+    * {
+      box-sizing: border-box;
+    }
     body {
       margin: 0;
       height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      font-family: sans-serif;
-      background-color: #111;
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(-45deg, #1a1a1a, #111, #2a2a2a, #000);
+      background-size: 400% 400%;
+      animation: bgShift 10s ease infinite;
       color: #fff;
     }
+    @keyframes bgShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
     .box {
       text-align: center;
-      padding: 30px;
-      background: #222;
-      border-radius: 10px;
-      box-shadow: 0 0 20px rgba(255,255,255,0.1);
+      padding: 30px 40px;
+      background: rgba(34, 34, 34, 0.85);
+      border-radius: 16px;
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      animation: fadeIn 1s ease forwards;
+      transform: translateY(20px);
+      opacity: 0;
+      max-width: 600px;
+      word-wrap: break-word;
+    }
+
+    @keyframes fadeIn {
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    h1 {
+      margin-top: 0;
+      font-weight: 600;
+      font-size: 1.8rem;
+      letter-spacing: 1px;
+    }
+
+    p {
+      margin: 8px 0;
+      font-size: 1rem;
+      color: #ccc;
+    }
+
+    .id-display {
+      margin-top: 15px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 1.1rem;
+      background: #000;
+      border-radius: 8px;
+      display: inline-block;
+      box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+
+    .countdown {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-top: 15px;
+      color: #0ff;
+    }
+
+    .redirect-url {
+      margin-top: 15px;
+      font-family: monospace;
+      font-size: 0.9rem;
+      background: #111;
+      padding: 8px;
+      border-radius: 8px;
+      text-align: left;
+      box-shadow: 0 0 5px rgba(0,0,0,0.4);
+      overflow-wrap: break-word;
     }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Assigning Your ID...</h1>
-    <p>Redirecting in 1 second</p>
+    <h1>Assigning Your Unique ID...</h1>
+    <p>Preparing your session</p>
+    <div class="id-display" id="idDisplay">Generating...</div>
+    <div class="redirect-url" id="redirectUrl" style="display:none;"></div>
+    <div class="countdown" id="countdown"></div>
   </div>
 
   <script>
@@ -58,19 +129,34 @@
       clientID = generateID();
       setCookie('clientID', clientID);
     }
+    document.getElementById('idDisplay').textContent = clientID;
 
-    // --- Read ?url= from current page ---
+    // --- Handle redirect ---
     const params = new URLSearchParams(window.location.search);
     const targetUrl = params.get('url');
 
     if (targetUrl) {
-      // Append ?id= to target URL
       const parsed = new URL(targetUrl, window.location.origin);
       parsed.searchParams.set('id', clientID);
 
-      // Wait 1 second before redirecting
-      setTimeout(() => {
-        window.location.href = parsed.toString();
+      // Show final URL
+      const redirectUrlBox = document.getElementById('redirectUrl');
+      redirectUrlBox.style.display = 'block';
+      redirectUrlBox.textContent = parsed.toString();
+
+      // Countdown
+      let seconds = 3;
+      const countdownEl = document.getElementById('countdown');
+      countdownEl.textContent = `Redirecting in ${seconds}`;
+
+      const interval = setInterval(() => {
+        seconds--;
+        if (seconds <= 0) {
+          clearInterval(interval);
+          window.location.href = parsed.toString();
+        } else {
+          countdownEl.textContent = `Redirecting in ${seconds}`;
+        }
       }, 1000);
     } else {
       document.querySelector('.box').innerHTML = `
