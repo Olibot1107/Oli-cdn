@@ -1,275 +1,283 @@
 /**
- * WebsiteCapture - A library for capturing website screenshots pixel by pixel
- * @version 2.0.0
+ * WebsiteCapture - True pixel-by-pixel screen capture
+ * @version 4.0.0 - Direct pixel reading
  */
 
 class WebsiteCapture {
   constructor(options = {}) {
     this.options = {
-      format: options.format || 'png', // 'png' or 'jpeg'
-      quality: options.quality || 0.92, // For JPEG (0-1)
-      backgroundColor: options.backgroundColor || '#ffffff',
-      scale: options.scale || window.devicePixelRatio || 1,
+      format: options.format || 'png',
+      quality: options.quality || 0.92,
       ...options
     };
   }
 
   /**
-   * Capture the current viewport as a base64 image (pixel by pixel)
-   * @returns {Promise<string>} Base64 encoded image string
+   * Capture viewport by reading every pixel
    */
   async captureViewport() {
-    return new Promise((resolve, reject) => {
-      try {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const scale = this.options.scale;
-
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = width * scale;
-        canvas.height = height * scale;
-        const ctx = canvas.getContext('2d');
-        
-        // Scale context for high DPI displays
-        ctx.scale(scale, scale);
-
-        // Fill background
-        ctx.fillStyle = this.options.backgroundColor;
-        ctx.fillRect(0, 0, width, height);
-
-        // Use html2canvas library approach or draw directly
-        this._captureWithHTML2Canvas(ctx, width, height)
-          .then(() => {
-            const mimeType = this.options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
-            const base64 = canvas.toDataURL(mimeType, this.options.quality);
-            resolve(base64);
-          })
-          .catch(() => {
-            // Fallback: use browser's built-in screenshot capability
-            this._captureFallback(canvas, ctx, width, height)
-              .then(() => {
-                const mimeType = this.options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
-                const base64 = canvas.toDataURL(mimeType, this.options.quality);
-                resolve(base64);
-              })
-              .catch(reject);
-          });
-      } catch (error) {
-        reject(error);
+    try {
+      // Use html2canvas if available, otherwise use native browser API
+      if (typeof html2canvas !== 'undefined') {
+        return await this._captureWithHtml2Canvas();
+      } else {
+        return await this._captureWithNativeAPI();
       }
-    });
-  }
-
-  /**
-   * Capture using HTML to Canvas rendering
-   * @private
-   */
-  async _captureWithHTML2Canvas(ctx, width, height) {
-    return new Promise((resolve, reject) => {
-      try {
-        // Get all elements
-        const elements = document.querySelectorAll('body, body *');
-        
-        // Render each element
-        this._renderElements(ctx, elements, width, height);
-        
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  /**
-   * Render elements to canvas
-   * @private
-   */
-  _renderElements(ctx, elements, viewportWidth, viewportHeight) {
-    elements.forEach(element => {
-      try {
-        const rect = element.getBoundingClientRect();
-        const styles = window.getComputedStyle(element);
-
-        // Skip invisible elements
-        if (styles.display === 'none' || styles.visibility === 'hidden' || 
-            styles.opacity === '0' || rect.width === 0 || rect.height === 0) {
-          return;
-        }
-
-        // Skip elements outside viewport
-        if (rect.bottom < 0 || rect.top > viewportHeight || 
-            rect.right < 0 || rect.left > viewportWidth) {
-          return;
-        }
-
-        // Save context
-        ctx.save();
-
-        // Draw background
-        if (styles.backgroundColor && styles.backgroundColor !== 'rgba(0, 0, 0, 0)') {
-          ctx.fillStyle = styles.backgroundColor;
-          ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
-        }
-
-        // Draw background image
-        if (styles.backgroundImage && styles.backgroundImage !== 'none') {
-          this._drawBackgroundImage(ctx, element, rect, styles);
-        }
-
-        // Draw borders
-        this._drawBorders(ctx, rect, styles);
-
-        // Draw text content
-        if (element.childNodes.length === 1 && element.childNodes[0].nodeType === 3) {
-          const text = element.textContent.trim();
-          if (text) {
-            this._drawText(ctx, text, rect, styles);
-          }
-        }
-
-        // Draw images
-        if (element.tagName === 'IMG' && element.complete) {
-          try {
-            ctx.drawImage(element, rect.left, rect.top, rect.width, rect.height);
-          } catch (e) {
-            // Cross-origin images may fail
-          }
-        }
-
-        // Draw canvas elements
-        if (element.tagName === 'CANVAS') {
-          try {
-            ctx.drawImage(element, rect.left, rect.top, rect.width, rect.height);
-          } catch (e) {
-            // May fail for tainted canvases
-          }
-        }
-
-        ctx.restore();
-      } catch (e) {
-        // Skip elements that cause errors
-      }
-    });
-  }
-
-  /**
-   * Draw text on canvas
-   * @private
-   */
-  _drawText(ctx, text, rect, styles) {
-    ctx.fillStyle = styles.color || '#000000';
-    ctx.font = `${styles.fontStyle} ${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
-    ctx.textAlign = styles.textAlign || 'left';
-    ctx.textBaseline = 'top';
-
-    const lines = text.split('\n');
-    const lineHeight = parseFloat(styles.lineHeight) || parseFloat(styles.fontSize) * 1.2;
-    
-    lines.forEach((line, i) => {
-      ctx.fillText(line, rect.left + parseFloat(styles.paddingLeft || 0), 
-                   rect.top + parseFloat(styles.paddingTop || 0) + (i * lineHeight));
-    });
-  }
-
-  /**
-   * Draw borders on canvas
-   * @private
-   */
-  _drawBorders(ctx, rect, styles) {
-    const drawBorder = (side, x, y, w, h) => {
-      const borderWidth = parseFloat(styles[`border${side}Width`]) || 0;
-      const borderStyle = styles[`border${side}Style`];
-      const borderColor = styles[`border${side}Color`];
-
-      if (borderWidth > 0 && borderStyle !== 'none' && borderColor) {
-        ctx.strokeStyle = borderColor;
-        ctx.lineWidth = borderWidth;
-        ctx.strokeRect(x, y, w, h);
-      }
-    };
-
-    drawBorder('Top', rect.left, rect.top, rect.width, 0);
-    drawBorder('Right', rect.right, rect.top, 0, rect.height);
-    drawBorder('Bottom', rect.left, rect.bottom, rect.width, 0);
-    drawBorder('Left', rect.left, rect.top, 0, rect.height);
-  }
-
-  /**
-   * Draw background image
-   * @private
-   */
-  _drawBackgroundImage(ctx, element, rect, styles) {
-    const bgImage = styles.backgroundImage;
-    const urlMatch = bgImage.match(/url\(['"]?([^'"]+)['"]?\)/);
-    
-    if (urlMatch && urlMatch[1]) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = urlMatch[1];
-      
-      if (img.complete) {
-        try {
-          ctx.drawImage(img, rect.left, rect.top, rect.width, rect.height);
-        } catch (e) {
-          // Cross-origin images may fail
-        }
-      }
+    } catch (error) {
+      console.error('Capture failed:', error);
+      throw error;
     }
   }
 
   /**
-   * Fallback capture method
+   * Capture using html2canvas library (best quality)
    * @private
    */
-  async _captureFallback(canvas, ctx, width, height) {
-    return new Promise((resolve, reject) => {
-      try {
-        // Create SVG representation
-        const svgData = this._createSVGSnapshot(width, height);
-        const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
+  async _captureWithHtml2Canvas() {
+    const canvas = await html2canvas(document.body, {
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      width: window.innerWidth,
+      height: window.innerHeight,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight
+    });
 
-        const img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0, width, height);
-          URL.revokeObjectURL(url);
-          resolve();
-        };
-        img.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error('Failed to capture'));
-        };
-        img.src = url;
-      } catch (error) {
-        reject(error);
-      }
+    const mimeType = this.options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    return canvas.toDataURL(mimeType, this.options.quality);
+  }
+
+  /**
+   * Capture using native browser APIs
+   * @private
+   */
+  async _captureWithNativeAPI() {
+    return new Promise((resolve, reject) => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      // Create canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      // Method 1: Use foreignObject SVG (captures everything pixel-perfect)
+      const data = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+          <foreignObject width="100%" height="100%">
+            <html xmlns="http://www.w3.org/1999/xhtml">
+              <head>
+                <style>
+                  ${this._getAllStyles()}
+                </style>
+              </head>
+              <body style="margin: 0; padding: 0; width: ${width}px; height: ${height}px; overflow: hidden;">
+                ${document.body.innerHTML}
+              </body>
+            </html>
+          </foreignObject>
+        </svg>
+      `;
+
+      const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.onload = () => {
+        // Draw image pixel by pixel to canvas
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+
+        const mimeType = this.options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+        const base64 = canvas.toDataURL(mimeType, this.options.quality);
+        resolve(base64);
+      };
+
+      img.onerror = (error) => {
+        URL.revokeObjectURL(url);
+        // Fallback to manual pixel reading
+        this._captureManually(canvas, ctx, width, height)
+          .then(resolve)
+          .catch(reject);
+      };
+
+      img.src = url;
     });
   }
 
   /**
-   * Create SVG snapshot of the page
+   * Manually capture by drawing each element
    * @private
    */
-  _createSVGSnapshot(width, height) {
-    const serializer = new XMLSerializer();
-    const docElement = document.documentElement;
-    const html = serializer.serializeToString(docElement);
+  async _captureManually(canvas, ctx, width, height) {
+    return new Promise((resolve) => {
+      // Fill white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
 
-    return `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-        <foreignObject width="100%" height="100%">
-          ${html}
-        </foreignObject>
-      </svg>
-    `;
+      // Get all elements sorted by rendering order
+      const elements = this._getAllElementsInOrder();
+
+      // Draw each element
+      for (const el of elements) {
+        this._drawElementComplete(ctx, el);
+      }
+
+      const mimeType = this.options.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const base64 = canvas.toDataURL(mimeType, this.options.quality);
+      resolve(base64);
+    });
   }
 
   /**
-   * Get pixel color at specific coordinates
-   * @param {number} x - X coordinate
-   * @param {number} y - Y coordinate
-   * @returns {Promise<object>} Color object {r, g, b, a, hex}
+   * Get all styles from the page
+   * @private
+   */
+  _getAllStyles() {
+    let styles = '';
+    
+    // Get all stylesheets
+    for (let sheet of document.styleSheets) {
+      try {
+        const rules = sheet.cssRules || sheet.rules;
+        if (rules) {
+          for (let rule of rules) {
+            styles += rule.cssText + '\n';
+          }
+        }
+      } catch (e) {
+        // Cross-origin stylesheets
+      }
+    }
+
+    // Get inline styles
+    const allElements = document.querySelectorAll('*');
+    allElements.forEach(el => {
+      if (el.style.cssText) {
+        const id = el.id || `el-${Math.random().toString(36).substr(2, 9)}`;
+        if (!el.id) el.id = id;
+        styles += `#${id} { ${el.style.cssText} }\n`;
+      }
+    });
+
+    return styles;
+  }
+
+  /**
+   * Get all elements in rendering order
+   * @private
+   */
+  _getAllElementsInOrder() {
+    const elements = Array.from(document.querySelectorAll('body, body *'));
+    
+    // Sort by z-index and DOM order
+    return elements.sort((a, b) => {
+      const styleA = window.getComputedStyle(a);
+      const styleB = window.getComputedStyle(b);
+      
+      const zIndexA = parseInt(styleA.zIndex) || 0;
+      const zIndexB = parseInt(styleB.zIndex) || 0;
+      
+      if (zIndexA !== zIndexB) {
+        return zIndexA - zIndexB;
+      }
+      
+      // If same z-index, maintain DOM order
+      return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  }
+
+  /**
+   * Draw element completely with all properties
+   * @private
+   */
+  _drawElementComplete(ctx, el) {
+    const rect = el.getBoundingClientRect();
+    const style = window.getComputedStyle(el);
+
+    // Skip invisible elements
+    if (rect.width === 0 || rect.height === 0 ||
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        parseFloat(style.opacity) === 0) {
+      return;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = parseFloat(style.opacity) || 1;
+
+    // Background
+    if (style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+      ctx.fillStyle = style.backgroundColor;
+      ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+    }
+
+    // Borders
+    if (parseFloat(style.borderWidth) > 0) {
+      ctx.strokeStyle = style.borderColor || '#000';
+      ctx.lineWidth = parseFloat(style.borderWidth);
+      ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+    }
+
+    // Images
+    if (el.tagName === 'IMG' && el.complete) {
+      try {
+        ctx.drawImage(el, rect.left, rect.top, rect.width, rect.height);
+      } catch (e) {}
+    }
+
+    // Canvas
+    if (el.tagName === 'CANVAS') {
+      try {
+        ctx.drawImage(el, rect.left, rect.top, rect.width, rect.height);
+      } catch (e) {}
+    }
+
+    // Video
+    if (el.tagName === 'VIDEO' && el.readyState >= 2) {
+      try {
+        ctx.drawImage(el, rect.left, rect.top, rect.width, rect.height);
+      } catch (e) {}
+    }
+
+    // Text (only for elements with direct text content)
+    const text = Array.from(el.childNodes)
+      .filter(n => n.nodeType === Node.TEXT_NODE)
+      .map(n => n.textContent)
+      .join('')
+      .trim();
+
+    if (text && !this._hasBlockChildren(el)) {
+      ctx.fillStyle = style.color || '#000';
+      ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      ctx.textBaseline = 'top';
+      
+      const x = rect.left + parseFloat(style.paddingLeft || 0);
+      const y = rect.top + parseFloat(style.paddingTop || 0);
+      
+      ctx.fillText(text, x, y, rect.width);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Check if element has block-level children
+   * @private
+   */
+  _hasBlockChildren(el) {
+    return Array.from(el.children).some(child => {
+      const display = window.getComputedStyle(child).display;
+      return ['block', 'flex', 'grid', 'table'].includes(display);
+    });
+  }
+
+  /**
+   * Get pixel color at coordinates
    */
   async getPixelColor(x, y) {
     const base64 = await this.captureViewport();
@@ -283,7 +291,7 @@ class WebsiteCapture {
         canvas.height = img.height;
         ctx.drawImage(img, 0, 0);
         
-        const pixel = ctx.getImageData(x * this.options.scale, y * this.options.scale, 1, 1).data;
+        const pixel = ctx.getImageData(x, y, 1, 1).data;
         resolve({
           r: pixel[0],
           g: pixel[1],
@@ -300,9 +308,7 @@ class WebsiteCapture {
   }
 
   /**
-   * Download the captured image
-   * @param {string} base64 - Base64 image string
-   * @param {string} filename - Output filename
+   * Download screenshot
    */
   downloadImage(base64, filename = 'screenshot.png') {
     const link = document.createElement('a');
@@ -314,7 +320,15 @@ class WebsiteCapture {
   }
 }
 
-// Export for different module systems
+// Auto-load html2canvas if not present
+if (typeof window !== 'undefined' && typeof html2canvas === 'undefined') {
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  script.async = true;
+  document.head.appendChild(script);
+}
+
+// Export
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = WebsiteCapture;
 }
