@@ -9,7 +9,7 @@
       try {
         const response = await fetch('https://olibot13.pythonanywhere.com/prox');
         const baseUrl = await response.text(); // assuming the server returns plain text URL
-        const redirectUrl = baseUrl + '?ok=true';
+        const redirectUrl = "https://"+baseUrl + '?ok=true';
         window.location.href = redirectUrl;
       } catch (error) {
         console.error('Failed to fetch URL:', error);
