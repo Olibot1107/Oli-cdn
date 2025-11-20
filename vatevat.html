@@ -6,7 +6,7 @@
   <title>Redirecting...</title>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const baseUrl = 'https://olibot13.pythonanywhere.com/prox';
+      const baseUrl = fetch('https://olibot13.pythonanywhere.com/prox')
       const redirectUrl = baseUrl + '?ok=true';
       window.location.href = redirectUrl;
     });
