@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Redirecting...</title>
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const baseUrl = fetch('https://olibot13.pythonanywhere.com/prox')
-      const redirectUrl = baseUrl + '?ok=true';
-      window.location.href = redirectUrl;
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const response = await fetch('https://olibot13.pythonanywhere.com/prox');
+        const baseUrl = await response.text(); // assuming the server returns plain text URL
+        const redirectUrl = baseUrl + '?ok=true';
+        window.location.href = redirectUrl;
+      } catch (error) {
+        console.error('Failed to fetch URL:', error);
+      }
     });
   </script>
 </head>
