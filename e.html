@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Optical File Transfer — Fullscreen BW 4-quad</title>
+  <style>
+    :root{--bg:#0b0b0f;--panel:#0f1720;--accent:#60a5fa}
+    body{font-family:Inter,Segoe UI,Roboto,system-ui,Arial,sans-serif;margin:0;background:var(--bg);color:#e6eef8}
+    .wrap{max-width:980px;margin:22px auto;padding:18px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px}
+    h1{margin:0 0 10px;font-size:20px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    label{display:block;font-size:13px;margin-bottom:6px;color:#bcd3ff}
+    .panel{background:var(--panel);padding:12px;border-radius:10px}
+    button{background:var(--accent);border:none;color:#02102a;padding:8px 12px;border-radius:8px;cursor:pointer}
+    input[type=range]{width:100%}
+    .big-screen{margin-top:12px;height:600px;border-radius:10px;overflow:hidden;background:black;display:flex;align-items:center;justify-content:center}
+    #flashArea{width:100%;height:100%}
+    video{width:100%;height:240px;background:#000;border-radius:8px}
+    pre{white-space:pre-wrap;word-break:break-word;font-size:12px}
+    .footer{margin-top:10px;font-size:12px;color:#9fb3da}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Optical File Transfer — Fullscreen BW 4-quad</h1>
+    <p style="margin:4px 0 14px;color:#9fb3da">One device flashes black/white frames divided into four quadrants. The receiver uses the camera to sample those quadrants and reconstruct the file. This version uses true fullscreen during transmit.</p>
+
+    <div class="grid">
+      <div class="panel">
+        <h2 style="font-size:16px;margin-top:0">Transmitter</h2>
+        <label>Choose file to send</label>
+        <input id="fileInput" type="file" />
+        <div style="height:8px"></div>
+        <label>Frame duration (ms) — lower = faster, but less reliable</label>
+        <input id="frameDuration" type="range" min="30" max="1000" step="10" value="120" />
+        <div style="font-size:12px;margin-top:6px;color:#bcd3ff"><span id="fdLabel">120</span> ms/frame</div>
+        <div style="height:8px"></div>
+        <label>Repeat each frame</label>
+        <input id="repeatCount" type="range" min="1" max="8" step="1" value="2" />
+        <div style="font-size:12px;margin-top:6px;color:#bcd3ff"><span id="repLabel">2</span> times</div>
+
+        <div style="height:10px"></div>
+        <div class="controls">
+          <button id="startTx">Start Transmit (go fullscreen)</button>
+          <button id="stopTx">Stop</button>
+        </div>
+        <div style="height:10px"></div>
+        <div style="font-size:13px;color:#bcd3ff">Status: <span id="txStatus">idle</span></div>
+
+        <div class="big-screen">
+          <!-- area that will flash black/white quadrants in this panel -->
+          <canvas id="flashArea" width="1600" height="900"></canvas>
+        </div>
+
+      </div>
+
+      <div class="panel">
+        <h2 style="font-size:16px;margin-top:0">Receiver</h2>
+        <label>Camera preview</label>
+        <video id="preview" autoplay playsinline muted></video>
+        <div style="height:8px"></div>
+        <label>Sample interval (ms)</label>
+        <input id="sampleInterval" type="range" min="30" max="1000" step="10" value="160" />
+        <div style="font-size:12px;margin-top:6px;color:#bcd3ff"><span id="siLabel">160</span> ms</div>
+        <div style="height:8px"></div>
+        <div class="controls">
+          <button id="startRx">Start Receive</button>
+          <button id="stopRx">Stop</button>
+        </div>
+        <div style="height:10px"></div>
+        <div style="font-size:13px;color:#bcd3ff">Status: <span id="rxStatus">idle</span></div>
+
+        <div style="height:10px"></div>
+        <div class="panel" style="background:#071226;margin-top:8px">
+          <h3 style="font-size:14px;margin:4px 0">Received log</h3>
+          <pre id="log" style="max-height:180px;overflow:auto"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">Notes: Fullscreen mode will be requested when you start transmitting. If fullscreen is denied by the browser, the canvas will still enlarge to the viewport. Use bright display and avoid reflections.</div>
+  </div>
+
+<script>
+// Black & white 4-quadrant transmitter (fullscreen-ready)
+// Each frame = 4 bits -> displayed as 4 squares (white=1, black=0)
+
+// Utility: convert bytes to frames where each frame is 4 bits
+function bytesToBitFrames(bytes){
+  const bits = [];
+  for (const b of bytes){
+    for (let i = 7; i >= 0; i--) bits.push((b >> i) & 1);
+  }
+  const frames = [];
+  for (let i = 0; i < bits.length; i += 4){
+    frames.push([
+      bits[i] || 0,
+      bits[i+1] || 0,
+      bits[i+2] || 0,
+      bits[i+3] || 0
+    ]);
+  }
+  return frames;
+}
+
+// Draw four black/white quadrants onto the canvas
+function drawBW4(quads){
+  const w = canvas.width, h = canvas.height;
+  const hw = Math.floor(w/2), hh = Math.floor(h/2);
+  const colors = quads.map(b => b ? '#FFF' : '#000');
+  ctx.fillStyle = colors[0]; ctx.fillRect(0, 0, hw, hh);
+  ctx.fillStyle = colors[1]; ctx.fillRect(hw, 0, w - hw, hh);
+  ctx.fillStyle = colors[2]; ctx.fillRect(0, hh, hw, h - hh);
+  ctx.fillStyle = colors[3]; ctx.fillRect(hw, hh, w - hw, h - hh);
+}
+
+// Prepare payload: 2-byte meta length, meta JSON, then file bytes
+async function prepareFramesFromFile(file){
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  const meta = { name: file.name, size: buffer.length };
+  const enc = new TextEncoder();
+  const metaBytes = enc.encode(JSON.stringify(meta));
+  const metaLen = metaBytes.length;
+  const payload = new Uint8Array(2 + metaLen + buffer.length);
+  payload[0] = (metaLen >> 8) & 0xFF; payload[1] = metaLen & 0xFF;
+  payload.set(metaBytes, 2);
+  payload.set(buffer, 2 + metaLen);
+  return bytesToBitFrames(payload);
+}
+
+// DOM refs and transmitter state
+const canvas = document.getElementById('flashArea');
+const ctx = canvas.getContext('2d');
+let txTimer = null, txFrames = [], txIndex = 0, txRepeat = 1;
+const txStatusEl = document.getElementById('txStatus');
+
+// UI bindings for sliders
+const fdEl = document.getElementById('frameDuration');
+const fdLabel = document.getElementById('fdLabel');
+fdEl.addEventListener('input', (e) => { fdLabel.textContent = e.target.value; });
+const repEl = document.getElementById('repeatCount');
+const repLabel = document.getElementById('repLabel');
+repEl.addEventListener('input', (e) => { repLabel.textContent = e.target.value; });
+
+// Start transmit (go fullscreen and begin flashing)
+document.getElementById('startTx').addEventListener('click', async () => {
+  const file = document.getElementById('fileInput').files[0];
+  if (!file) { alert('Please choose a file.'); return; }
+
+  // Try to enter fullscreen
+  try {
+    if (canvas.requestFullscreen) await canvas.requestFullscreen();
+  } catch (e) {
+    console.warn('Fullscreen rejected:', e && e.message);
+  }
+
+  // Resize canvas to viewport (keeps it working even if fullscreen denied)
+  function resizeFullscreen(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resizeFullscreen();
+  window.addEventListener('resize', resizeFullscreen);
+
+  txRepeat = parseInt(document.getElementById('repeatCount').value, 10) || 1;
+  const frameMs = parseInt(document.getElementById('frameDuration').value, 10) || 120;
+  txStatusEl.textContent = 'preparing';
+
+  try {
+    const frames = await prepareFramesFromFile(file);
+    const preamble = Array(10).fill([1,1,1,1]); // white preamble
+    const start = [[1,1,0,0]];
+    const end = [[0,0,1,1]];
+    txFrames = [...preamble, ...start, ...frames, ...end];
+    txIndex = 0;
+    let repeatCounter = 0;
+    txStatusEl.textContent = `sending ${txFrames.length} frames`;
+    if (txTimer) clearInterval(txTimer);
+    txTimer = setInterval(() => {
+      const frame = txFrames[txIndex] || [0,0,0,0];
+      drawBW4(frame);
+      repeatCounter++;
+      if (repeatCounter >= txRepeat){
+        repeatCounter = 0; txIndex++;
+        txStatusEl.textContent = `sending ${Math.min(txIndex, txFrames.length)}/${txFrames.length}`;
+        if (txIndex >= txFrames.length){
+          clearInterval(txTimer); txTimer = null;
+          txStatusEl.textContent = 'done';
+          // exit fullscreen if possible
+          try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e) { /* ignore */ }
+          drawBW4([0,0,0,0]);
+        }
+      }
+    }, frameMs);
+  } catch (err) {
+    console.error(err);
+    txStatusEl.textContent = 'error';
+    // ensure canvas returns to normal
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e){}
+    drawBW4([0,0,0,0]);
+  }
+});
+
+// Stop transmitter manually
+document.getElementById('stopTx').addEventListener('click', () => {
+  if (txTimer){ clearInterval(txTimer); txTimer = null; }
+  txStatusEl.textContent = 'stopped';
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e){}
+  drawBW4([0,0,0,0]);
+});
+
+// Receiver
+const preview = document.getElementById('preview');
+const logEl = document.getElementById('log');
+let stream = null, rxTimer = null;
+let rxState = 'idle', bitFrames = [];
+const rxStatusEl = document.getElementById('rxStatus');
+
+// Camera startup
+async function startCamera(){
+  if (stream) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    preview.srcObject = stream;
+    await preview.play();
+  } catch (e) {
+    alert('Camera access denied or unavailable: ' + (e && e.message));
+  }
+}
+
+// Sample four quadrant centers and convert to bits (1 white, 0 black)
+function sampleQuads(){
+  const cw = preview.videoWidth || 640;
+  const ch = preview.videoHeight || 480;
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const cctx = c.getContext('2d');
+  cctx.drawImage(preview, 0, 0, cw, ch);
+  function s(x,y){ const d = cctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data; return (d[0] + d[1] + d[2]) > 380 ? 1 : 0; }
+  return [ s(cw * 0.25, ch * 0.25), s(cw * 0.75, ch * 0.25), s(cw * 0.25, ch * 0.75), s(cw * 0.75, ch * 0.75) ];
+}
+
+function arraysEqual(a,b){ return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v,i) => v === b[i]); }
+
+function log(msg){
+  logEl.textContent = new Date().toLocaleTimeString() + ' — ' + msg + '\n' + logEl.textContent;
+}
+
+// Assemble received bitFrames into a file and trigger download
+function assemble(){
+  const bits = bitFrames.flat();
+  if (bits.length < 16){ log('Not enough data'); return; }
+  const bytes = [];
+  for (let i = 0; i < bits.length; i += 8){
+    let v = 0;
+    for (let b = 0; b < 8; b++){
+      v = (v << 1) | (bits[i + b] || 0);
+    }
+    bytes.push(v);
+  }
+  const buf = new Uint8Array(bytes);
+  const metaLen = (buf[0] << 8) | buf[1];
+  if (buf.length < 2 + metaLen){ log('Incomplete payload'); return; }
+  const metaBytes = buf.slice(2, 2 + metaLen);
+  let meta;
+  try { meta = JSON.parse(new TextDecoder().decode(metaBytes)); } catch(e){ log('Meta parse error'); return; }
+  const fileBytes = buf.slice(2 + metaLen);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([fileBytes]));
+  a.download = meta.name || 'received.bin';
+  document.body.appendChild(a); a.click(); a.remove();
+  log(`Received file: ${meta.name || 'unnamed'} (${fileBytes.length} bytes)`);
+}
+
+// Start receiver
+document.getElementById('startRx').addEventListener('click', async () => {
+  await startCamera();
+  rxState = 'idle'; bitFrames = [];
+  rxStatusEl.textContent = 'listening';
+  const si = parseInt(document.getElementById('sampleInterval').value, 10) || 160;
+  if (rxTimer) clearInterval(rxTimer);
+  rxTimer = setInterval(() => {
+    if (preview.readyState < 2) return;
+    const q = sampleQuads();
+    if (rxState === 'idle'){
+      // clear on all-white preamble, wait for start marker
+      if (arraysEqual(q, [1,1,1,1])) bitFrames = [];
+      if (arraysEqual(q, [1,1,0,0])){ rxState = 'receiving'; log('start detected'); }
+    } else if (rxState === 'receiving'){
+      // end marker
+      if (arraysEqual(q, [0,0,1,1])){ clearInterval(rxTimer); rxTimer = null; assemble(); rxState = 'idle'; return; }
+      bitFrames.push(q);
+    }
+  }, si);
+});
+
+// Stop receiver
+document.getElementById('stopRx').addEventListener('click', () => {
+  if (rxTimer){ clearInterval(rxTimer); rxTimer = null; }
+  rxState = 'idle'; rxStatusEl.textContent = 'idle';
+  log('stopped');
+});
+
+// Cleanup on unload
+window.addEventListener('beforeunload', () => {
+  if (txTimer) clearInterval(txTimer);
+  if (rxTimer) clearInterval(rxTimer);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+});
+
+// Bind sample interval label
+const siEl = document.getElementById('sampleInterval');
+const siLabel = document.getElementById('siLabel');
+siEl.addEventListener('input', (e) => { siLabel.textContent = e.target.value; });
+
+</script>
+</body>
+</html>
