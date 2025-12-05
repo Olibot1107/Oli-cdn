@@ -24,7 +24,6 @@
       50% { background-position: 100% 50%; }
       100% { background-position: 0% 50%; }
     }
-
     .box {
       text-align: center;
       padding: 30px 40px;
@@ -35,27 +34,23 @@
       opacity: 0;
       max-width: 600px;
     }
-
     @keyframes fadeIn {
       to {
         transform: translateY(0);
         opacity: 1;
       }
     }
-
     h1 {
       margin-top: 0;
       font-weight: 600;
       font-size: 1.8rem;
       letter-spacing: 1px;
     }
-
     p {
       margin: 8px 0;
       font-size: 1rem;
       color: #ccc;
     }
-
     .id-display {
       margin-top: 15px;
       padding: 10px;
@@ -66,18 +61,27 @@
       display: inline-block;
       box-shadow: 0 0 8px rgba(0,0,0,0.5);
     }
-
     .countdown {
       font-size: 1.5rem;
       font-weight: 600;
       margin-top: 15px;
       color: #0ff;
     }
+    .status {
+      margin-top: 20px;
+      font-size: 0.95rem;
+      color: #aaa;
+      min-height: 24px;
+    }
   </style>
 </head>
 <body>
   <div class="box">
+    <h1>Setting Up Your Session</h1>
+    <p>Your ID:</p>
     <div class="id-display" id="idDisplay">Generating...</div>
+    <div class="countdown" id="countdown">6</div>
+    <div class="status" id="status">Initializing...</div>
   </div>
 <script>
   // --- Cookie helpers ---
@@ -86,12 +90,10 @@
     d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
     document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/`;
   }
-
   function getCookie(name) {
     const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
     return match ? match[2] : null;
   }
-
   // --- Generate ID ---
   function generateID(length = 10) {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -101,7 +103,6 @@
     }
     return id;
   }
-
   // --- Get or create ID ---
   let clientID = getCookie('clientID');
   if (!clientID) {
@@ -109,24 +110,58 @@
     setCookie('clientID', clientID);
   }
   document.getElementById('idDisplay').textContent = clientID;
-
-  // --- Handle redirect ---
-  const params = new URLSearchParams(window.location.search);
-  const targetUrl = params.get('url');
-
-  if (targetUrl) {
-    const parsed = new URL(targetUrl, window.location.origin);
-    parsed.searchParams.set('id', clientID);
-
-    // Immediate redirect
-    window.location.href = parsed.toString();
-  } else {
-    document.querySelector('.box').innerHTML = `
-      <h1>Error</h1>
-      <p>No <code>?url=</code> parameter provided.</p>
-    `;
-  }
+  
+  // --- Funny status messages ---
+  const funnyMessages = [
+    "Scanning for femboys",
+    "scanning your dih size",
+    "scanning your mum"
+  ];
+  
+  let timeLeft = 6;
+  const countdownEl = document.getElementById('countdown');
+  const statusEl = document.getElementById('status');
+  
+  // Shuffle messages
+  const shuffled = funnyMessages.sort(() => Math.random() - 0.5);
+  let msgIndex = 0;
+  
+  statusEl.textContent = shuffled[msgIndex];
+  
+  const interval = setInterval(() => {
+    timeLeft--;
+    countdownEl.textContent = timeLeft;
+    
+    // Change message every ~1.5 seconds
+    if (timeLeft % 2 === 0 && msgIndex < shuffled.length - 1) {
+      msgIndex++;
+      statusEl.textContent = shuffled[msgIndex];
+    }
+    
+    if (timeLeft <= 0) {
+      clearInterval(interval);
+      statusEl.textContent = "Redirecting...";
+      
+      // --- Handle redirect ---
+      const params = new URLSearchParams(window.location.search);
+      const targetUrl = params.get('url');
+      if (targetUrl) {
+        const parsed = new URL(targetUrl, window.location.origin);
+        parsed.searchParams.set('id', clientID);
+        window.location.href = parsed.toString();
+      } else {
+        document.querySelector('.box').innerHTML = `
+          <h1>Error</h1>
+          <p>No <code>?url=</code> parameter provided.</p>
+        `;
+      }
+    }
+  }, 1000);
+  
+  // Animate box in
+  setTimeout(() => {
+    document.querySelector('.box').style.animation = 'fadeIn 0.5s forwards';
+  }, 100);
 </script>
-
 </body>
 </html>
